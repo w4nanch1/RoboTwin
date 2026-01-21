@@ -4,17 +4,17 @@ render_freq: 0
 episode_num: 50
 use_seed: false
 save_freq: 15
-embodiment: [aloha-agilex]
-# embodiment: [franka-panda, franka-panda, 0.8]
+# embodiment: [aloha-agilex]
+embodiment: [franka-panda, franka-panda, 0.8]
 language_num: 100
 domain_randomization:
-  random_background: true
-  cluttered_table: true
-  clean_background_rate: 0.02
+  random_background: false
+  cluttered_table: false
+  clean_background_rate: 1
   random_head_camera_dis: 0
-  random_table_height: 0.03
-  random_light: true
-  crazy_random_light_rate: 0.02
+  random_table_height: 0
+  random_light: false
+  crazy_random_light_rate: 0
 camera:
   head_camera_type: D435
   wrist_camera_type: D435
