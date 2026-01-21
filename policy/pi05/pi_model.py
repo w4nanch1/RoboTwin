@@ -4,9 +4,17 @@
 #!/usr/bin/python3
 """
 import json
+import os
 import sys
 import jax
 import numpy as np
+
+current_file_path = os.path.abspath(__file__)
+parent_directory = os.path.dirname(current_file_path)
+src_directory = os.path.join(parent_directory, 'src')
+if src_directory not in sys.path:
+    sys.path.insert(0, src_directory)
+
 from openpi.models import model as _model
 from openpi.policies import aloha_policy
 from openpi.policies import policy_config as _policy_config
@@ -17,12 +25,6 @@ from openpi.training import data_loader as _data_loader
 import cv2
 from PIL import Image
 
-from openpi.models import model as _model
-from openpi.policies import policy_config as _policy_config
-from openpi.shared import download
-from openpi.training import config as _config
-from openpi.training import data_loader as _data_loader
-
 
 class PI0:
 
@@ -31,14 +33,14 @@ class PI0:
         self.model_name = model_name
         self.checkpoint_id = checkpoint_id
 
-        specified_path = f"policy/pi0/checkpoints/{self.train_config_name}/{self.model_name}/{self.checkpoint_id}/assets/"
+        specified_path = f"policy/pi05/checkpoints/{self.train_config_name}/{self.model_name}/{self.checkpoint_id}/assets/"
         entries = os.listdir(specified_path)
         assets_id = entries[0]
 
         config = _config.get_config(self.train_config_name)
         self.policy = _policy_config.create_trained_policy(
             config,
-            f"policy/pi0/checkpoints/{self.train_config_name}/{self.model_name}/{self.checkpoint_id}",
+            f"policy/pi05/checkpoints/{self.train_config_name}/{self.model_name}/{self.checkpoint_id}",
             robotwin_repo_id=assets_id,
             )
         print("loading model success!")

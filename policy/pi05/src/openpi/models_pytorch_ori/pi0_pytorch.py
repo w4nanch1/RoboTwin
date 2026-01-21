@@ -9,7 +9,6 @@ import torch.nn.functional as F  # noqa: N812
 import openpi.models.gemma as _gemma
 from openpi.models_pytorch.gemma_pytorch import PaliGemmaWithExpertModel
 import openpi.models_pytorch.preprocessing_pytorch as _preprocessing
-from openpi.models_pytorch import steering as _steering
 
 
 def get_safe_dtype(target_dtype, device_type):
@@ -110,13 +109,7 @@ class PI0Pytorch(nn.Module):
             self.action_time_mlp_out = nn.Linear(action_expert_config.width, action_expert_config.width)
 
         torch.set_float32_matmul_precision("high")
-        # Activation steering state (per-request)
-        self._steering_cfg: _steering.SteeringConfig = _steering.SteeringConfig()
-
-        # NOTE: steering/grad-collection introduces autograd hooks and python-side logic in the expert forward;
-        # torch.compile may drop/graph-break these. We keep a compiled version for normal inference, and fall back
-        # to eager when steering is enabled.
-        self._compiled_sample_actions = torch.compile(self._sample_actions_impl, mode="max-autotune")
+        self.sample_actions = torch.compile(self.sample_actions, mode="max-autotune")
 
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
@@ -129,17 +122,6 @@ class PI0Pytorch(nn.Module):
                 raise ValueError(msg)
         except ImportError:
             raise ValueError(msg) from None
-
-    def set_steering_cfg(self, cfg: _steering.SteeringConfig | dict | None) -> None:
-        if cfg is None:
-            self._steering_cfg = _steering.SteeringConfig()
-        elif isinstance(cfg, _steering.SteeringConfig):
-            self._steering_cfg = cfg
-        else:
-            self._steering_cfg = _steering.SteeringConfig.from_dict(cfg)
-        # Propagate to the expert wrapper where the actual per-layer computation happens.
-        self.paligemma_with_expert.set_steering_cfg(self._steering_cfg)
-
 
     def gradient_checkpointing_enable(self):
         """Enable gradient checkpointing for memory optimization."""
@@ -391,22 +373,7 @@ class PI0Pytorch(nn.Module):
         return F.mse_loss(u_t, v_t, reduction="none")
 
     @torch.no_grad()
-    def sample_actions(self, device, observation, noise=None, num_steps=10, steering=None) -> Tensor:
-        """Inference entrypoint.
-
-        When `steering` is enabled, we run eager to ensure forward hooks are honored.
-        """
-        self.set_steering_cfg(steering)
-        try:
-            if self._steering_cfg.enabled:
-                return self._sample_actions_impl(device, observation, noise=noise, num_steps=num_steps)
-            return self._compiled_sample_actions(device, observation, noise=noise, num_steps=num_steps)
-        finally:
-            # Prevent config leakage across requests
-            self.set_steering_cfg(None)
-
-    @torch.no_grad()
-    def _sample_actions_impl(self, device, observation, noise=None, num_steps=10) -> Tensor:
+    def sample_actions(self, device, observation, noise=None, num_steps=10) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = observation.state.shape[0]
         if noise is None:
@@ -460,9 +427,6 @@ class PI0Pytorch(nn.Module):
         timestep,
     ):
         """Apply one denoising step of the noise `x_t` at a given timestep."""
-        # Provide runtime timestep to steering so it can select the correct (0..9) bin.
-        if self._steering_cfg.enabled:
-            self.paligemma_with_expert.set_steering_runtime_time(timestep)
         suffix_embs, suffix_pad_masks, suffix_att_masks, adarms_cond = self.embed_suffix(state, x_t, timestep)
 
         suffix_len = suffix_pad_masks.shape[1]

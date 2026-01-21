@@ -96,14 +96,30 @@ class AlohaOutputs(transforms.DataTransformFn):
     adapt_to_pi: bool = True
 
     def __call__(self, data: dict) -> dict:
-        # Only return the first 14 dims.
-        actions = np.asarray(data["actions"][:, :14])
+        actions = np.asarray(data["actions"])
+        action_dim = actions.shape[-1]
+        # For 16-dim data, keep all dimensions; for 14-dim, keep first 14
+        if action_dim > 14:
+            # Keep all dimensions for franka-panda (16-dim)
+            pass
+        else:
+            # For standard aloha, only return the first 14 dims
+            actions = actions[:, :14]
         return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi)}
 
 
-def _joint_flip_mask() -> np.ndarray:
+def _joint_flip_mask(state_dim: int = 14) -> np.ndarray:
     """Used to convert between aloha and pi joint angles."""
-    return np.array([1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1])
+    if state_dim == 14:
+        # Standard dual-arm Aloha: [left_arm_joints(6), left_gripper(1), right_arm_joints(6), right_gripper(1)]
+        return np.array([1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1])
+    elif state_dim == 16:
+        # Franka-panda: [panda_joints(7), panda_gripper(1), endpose(7), endpose_gripper(1)]
+        # Only flip joints, not gripper or endpose
+        return np.array([1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+    else:
+        # For other dimensions, return all ones (no flipping)
+        return np.ones(state_dim)
 
 
 def _normalize(x, min_val, max_val):
@@ -180,23 +196,42 @@ def _decode_aloha(data: dict, *, adapt_to_pi: bool = False) -> dict:
 
 def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
+        state_dim = state.shape[-1] if state.ndim > 0 else len(state)
         # Flip the joints.
-        state = _joint_flip_mask() * state
+        state = _joint_flip_mask(state_dim) * state
         # Reverse the gripper transformation that is being applied by the Aloha runtime.
-        state[[6, 13]] = _gripper_to_angular(state[[6, 13]])
+        # Only apply to gripper indices if they exist (for 14-dim: indices 6 and 13)
+        if state_dim == 14:
+            state[[6, 13]] = _gripper_to_angular(state[[6, 13]])
+        elif state_dim == 16:
+            # For franka-panda, only apply to the first gripper (index 7)
+            gripper_val = _gripper_to_angular(state[[7]])
+            state[7] = gripper_val[0] if isinstance(gripper_val, np.ndarray) else gripper_val
     return state
 
 
 def _encode_actions(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
+        action_dim = actions.shape[-1]
         # Flip the joints.
-        actions = _joint_flip_mask() * actions
-        actions[:, [6, 13]] = _gripper_from_angular(actions[:, [6, 13]])
+        actions = _joint_flip_mask(action_dim) * actions
+        # Apply gripper transformation
+        if action_dim == 14:
+            actions[:, [6, 13]] = _gripper_from_angular(actions[:, [6, 13]])
+        elif action_dim == 16:
+            # For franka-panda, only apply to the first gripper (index 7)
+            actions[:, 7] = _gripper_from_angular(actions[:, [7]])[:, 0]
     return actions
 
 
 def _encode_actions_inv(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
-        actions = _joint_flip_mask() * actions
-        actions[:, [6, 13]] = _gripper_from_angular_inv(actions[:, [6, 13]])
+        action_dim = actions.shape[-1]
+        actions = _joint_flip_mask(action_dim) * actions
+        # Apply inverse gripper transformation
+        if action_dim == 14:
+            actions[:, [6, 13]] = _gripper_from_angular_inv(actions[:, [6, 13]])
+        elif action_dim == 16:
+            # For franka-panda, only apply to the first gripper (index 7)
+            actions[:, 7] = _gripper_from_angular_inv(actions[:, [7]])[:, 0]
     return actions

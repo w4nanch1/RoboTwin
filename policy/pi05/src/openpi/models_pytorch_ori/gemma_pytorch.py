@@ -8,8 +8,6 @@ from transformers import PaliGemmaForConditionalGeneration
 from transformers.models.auto import CONFIG_MAPPING
 from transformers.models.gemma import modeling_gemma
 
-from openpi.models_pytorch import steering as _steering
-
 
 class PaliGemmaWithExpertModel(nn.Module):
     def __init__(
@@ -60,25 +58,7 @@ class PaliGemmaWithExpertModel(nn.Module):
         self.gemma_expert = GemmaForCausalLM(config=action_expert_config_hf)
         self.gemma_expert.model.embed_tokens = None
 
-        # Per-request steering config (used to collect/modify activations in expert layers)
-        self._steering_cfg: _steering.SteeringConfig = _steering.SteeringConfig()
-        # Runtime denoise timestep (set by PI0Pytorch during inference)
-        self._steering_runtime_time: float | None = None
-
         self.to_bfloat16_for_selected_params(precision)
-
-    def set_steering_cfg(self, cfg: _steering.SteeringConfig | None) -> None:
-        self._steering_cfg = cfg or _steering.SteeringConfig()
-
-    def set_steering_runtime_time(self, t: float | torch.Tensor | None) -> None:
-        if t is None:
-            self._steering_runtime_time = None
-            return
-        if isinstance(t, torch.Tensor):
-            # Expect shape (B,) or scalar; take first element
-            self._steering_runtime_time = float(t.flatten()[0].detach().cpu().item())
-        else:
-            self._steering_runtime_time = float(t)
 
     def to_bfloat16_for_selected_params(self, precision: Literal["bfloat16", "float32"] = "bfloat16"):
         if precision == "bfloat16":
@@ -252,34 +232,6 @@ class PaliGemmaWithExpertModel(nn.Module):
                     out_emb = layer.mlp(out_emb)
                     # second residual
                     out_emb = modeling_gemma._gated_residual(after_first_residual, out_emb, gate)  # noqa: SLF001
-
-                    # === Activation steering hook point (expert / suffix stream) ===
-                    # IMPORTANT: We cannot rely on torch module forward hooks on `layer` because this function
-                    # manually composes submodules without calling `layer.forward()`.
-                    # Here, `i == 1` corresponds to the action expert (gemma_expert) stream.
-                    cfg = getattr(self, "_steering_cfg", _steering.SteeringConfig())
-                    if (
-                        i == 1
-                        and cfg.enabled
-                        and int(cfg.layer) == int(layer_idx)
-                        and isinstance(out_emb, torch.Tensor)
-                    ):
-                        
-                        out_emb = _steering.steer_activation(
-                            out_emb,
-                            cfg=cfg,
-                            layer_idx=int(layer_idx),
-                            sample_time=getattr(self, "_steering_runtime_time", None),
-                        )
-
-                        # Collect gradient when backward runs
-                        if out_emb.requires_grad:
-                            def _grad_hook(grad: torch.Tensor) -> torch.Tensor:
-                                _steering.on_activation_grad(out_emb, grad, cfg=cfg, layer_idx=int(layer_idx))
-                                return grad
-
-                            out_emb.register_hook(_grad_hook)
-
                     outputs_embeds.append(out_emb)
                     start_pos = end_pos
 

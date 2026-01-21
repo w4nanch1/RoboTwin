@@ -42,8 +42,10 @@ def create_empty_dataset(
     has_velocity: bool = False,
     has_effort: bool = False,
     dataset_config: DatasetConfig = DEFAULT_DATASET_CONFIG,
+    state_dim: int | None = None,
 ) -> LeRobotDataset:
-    motors = [
+    # Default motors for 14-dim (dual arm)
+    default_motors_14 = [
         "left_waist",
         "left_shoulder",
         "left_elbow",
@@ -59,6 +61,37 @@ def create_empty_dataset(
         "right_wrist_rotate",
         "right_gripper",
     ]
+    
+    # Motors for 16-dim (possibly franka-panda with endpose)
+    default_motors_16 = [
+        "panda_joint1",
+        "panda_joint2",
+        "panda_joint3",
+        "panda_joint4",
+        "panda_joint5",
+        "panda_joint6",
+        "panda_joint7",
+        "panda_gripper",
+        "endpose_x",
+        "endpose_y",
+        "endpose_z",
+        "endpose_qx",
+        "endpose_qy",
+        "endpose_qz",
+        "endpose_qw",
+        "endpose_gripper",
+    ]
+    
+    if state_dim is None:
+        state_dim = 14  # default
+    
+    if state_dim == 14:
+        motors = default_motors_14
+    elif state_dim == 16:
+        motors = default_motors_16
+    else:
+        # Generate generic motor names for any dimension
+        motors = [f"motor_{i}" for i in range(state_dim)]
 
     cameras = [
         "cam_high",
@@ -267,6 +300,13 @@ def port_aloha(
             file_path = os.path.join(root, filename)
             hdf5_files.append(file_path)
 
+    # Determine state dimension from first file
+    state_dim = None
+    if hdf5_files:
+        with h5py.File(hdf5_files[0], "r") as ep:
+            if "/observations/qpos" in ep:
+                state_dim = ep["/observations/qpos"].shape[1]
+    
     dataset = create_empty_dataset(
         repo_id,
         robot_type="mobile_aloha" if is_mobile else "aloha",
@@ -274,6 +314,7 @@ def port_aloha(
         has_effort=has_effort(hdf5_files),
         has_velocity=has_velocity(hdf5_files),
         dataset_config=dataset_config,
+        state_dim=state_dim,
     )
     dataset = populate_dataset(
         dataset,

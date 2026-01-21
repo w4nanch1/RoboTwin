@@ -49,10 +49,14 @@ class Sapien_TEST(gym.Env):
         try:
             self.setup_scene()
             print("\033[32m" + "Render Well" + "\033[0m")
-        except:
+        except Exception as e:
             print("\033[31m" + "Render Error" + "\033[0m")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error message: {e}")
+            import traceback
+            traceback.print_exc()
             exit()
-
+            
     def setup_scene(self, **kwargs):
         """
         Set the scene

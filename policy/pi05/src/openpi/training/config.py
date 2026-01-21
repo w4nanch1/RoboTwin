@@ -557,7 +557,7 @@ _CONFIGS = [
         name="pi05_aloha_full_base",
         model=pi0_config.Pi0Config(pi05=True),
         data=LeRobotAlohaDataConfig(
-            repo_id="your_repo_id",
+            repo_id="demo_clean_repo_fanka",
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -576,8 +576,9 @@ _CONFIGS = [
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=20_000,
-        batch_size=64,
+        batch_size=32,  # Reduced from 64 to avoid OOM
         fsdp_devices=1,  # refer line 359
+        # save_interval=10,
     ),
     # pi0_base by lora
     TrainConfig(

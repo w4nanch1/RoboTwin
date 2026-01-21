@@ -66,8 +66,18 @@ class Policy(BasePolicy):
 
     @override
     def infer(self, obs: dict, *, noise: np.ndarray | None = None) -> dict:  # type: ignore[misc]
+        # Extract optional non-tensor metadata before transformations / tensor conversion.
+        # We use this for per-request features like activation steering.
+        steer_cfg = None
+        if isinstance(obs, dict) and "steer" in obs:
+            steer_cfg = obs.get("steer")
+
         # Make a copy since transformations may modify the inputs in place.
+        # IMPORTANT: Remove non-array keys (e.g. nested dicts) before the tensor conversion below.
         inputs = jax.tree.map(lambda x: x, obs)
+        if isinstance(inputs, dict) and "steer" in inputs:
+            inputs = dict(inputs)
+            inputs.pop("steer", None)
         inputs = self._input_transform(inputs)
         if not self._is_pytorch_model:
             # Make a batch and convert to jax.Array.
@@ -86,6 +96,9 @@ class Policy(BasePolicy):
             if noise.ndim == 2:  # If noise is (action_horizon, action_dim), add batch dimension
                 noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
             sample_kwargs["noise"] = noise
+        if self._is_pytorch_model and steer_cfg is not None:
+            # Per-request activation steering config (handled by the PyTorch model if supported).
+            sample_kwargs["steering"] = steer_cfg
 
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()

@@ -2,7 +2,7 @@
 name = "openpi"
 version = "0.1.0"
 description = "Physical Intelligence open source repo"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 dependencies = [
     "pip==24.2",

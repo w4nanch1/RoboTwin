@@ -126,7 +126,16 @@ class CallbackHandler(ocp.AsyncCheckpointHandler):
             args.callback(directory)
 
     async def async_save(self, directory: epath.Path, args: CallbackSave) -> list[futures.Future]:
-        return [future.CommitFutureAwaitingContractedSignals(asyncio.to_thread(self.save, directory, args))]
+        # Handle different orbax versions - CommitFutureAwaitingContractedSignals may not exist in newer versions
+        if hasattr(future, 'CommitFutureAwaitingContractedSignals'):
+            # Old orbax API
+            return [future.CommitFutureAwaitingContractedSignals(asyncio.to_thread(self.save, directory, args))]
+        else:
+            # Newer orbax versions: create a Future using ThreadPoolExecutor
+            # This is compatible with the expected return type
+            executor = futures.ThreadPoolExecutor(max_workers=1)
+            future_obj = executor.submit(self.save, directory, args)
+            return [future_obj]
 
     def restore(self, *args, **kwargs):
         raise NotImplementedError("CallbackHandler does not support restore")

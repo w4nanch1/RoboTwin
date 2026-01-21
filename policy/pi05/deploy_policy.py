@@ -1,10 +1,12 @@
 import numpy as np
 import torch
-import dill
 import os, sys
 
 current_file_path = os.path.abspath(__file__)
 parent_directory = os.path.dirname(current_file_path)
+src_directory = os.path.join(parent_directory, 'src')
+if src_directory not in sys.path:
+    sys.path.insert(0, src_directory)
 sys.path.append(parent_directory)
 
 from pi_model import *
