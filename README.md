@@ -13,7 +13,7 @@ Currently supported task: **move_can_pot**
 Download checkpoints from Google Drive and place them in the `policy/pi05/checkpoints/` directory.
 
 - **Aloha Checkpoint**: Download from [Google Drive](https://drive.google.com/file/d/17JRZ49Lpj9Gx61tz0nl3k7Ulzkz8saVv/view?usp=drive_link)
-- **Franka Checkpoint**: Download from [Google Drive]
+- **Franka Checkpoint**: Download from [Google Drive](https://drive.google.com/file/d/1-9o6juJkCNluXZZuOATZxZZxHWTBsljt/view?usp=drive_link)
 
 ### Directory Structure
 
