@@ -1,11 +1,13 @@
 from collections.abc import Sequence
 import logging
+import os
 import pathlib
 import time
-from typing import Any, TypeAlias
+from typing import Any, TYPE_CHECKING, TypeAlias
 
 import flax
 import flax.traverse_util
+import fsspec
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,12 +15,73 @@ from openpi_client import base_policy as _base_policy
 import torch
 from typing_extensions import override
 
-from openpi import transforms as _transforms
 from openpi.models import model as _model
 from openpi.shared import array_typing as at
 from openpi.shared import nnx_utils
 
+if TYPE_CHECKING:
+    from openpi import transforms as _transforms
+else:
+    # Delay import to avoid circular dependency
+    _transforms = None
+
 BasePolicy: TypeAlias = _base_policy.BasePolicy
+
+
+def maybe_download(path: str, gs: dict[str, Any] | None = None) -> pathlib.Path:
+    """Download a file or directory if it's a remote path, otherwise return the local path.
+    
+    Args:
+        path: Local file path or remote path (e.g., gs://bucket/path)
+        gs: Optional dict with Google Storage credentials (e.g., {"token": "anon"})
+    
+    Returns:
+        Path to the local file or directory
+    """
+    path_str = str(path)
+    
+    # If it's a local path, check if it exists
+    if not path_str.startswith("gs://"):
+        local_path = pathlib.Path(path_str)
+        if not local_path.exists():
+            raise FileNotFoundError(f"Local path does not exist: {local_path}")
+        return local_path
+    
+    # Remote path - download it
+    data_home = os.environ.get("OPENPI_DATA_HOME", os.path.expanduser("~/.openpi_data"))
+    cache_dir = pathlib.Path(data_home)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create a cache key from the remote path
+    cache_key = path_str.replace("gs://", "").replace("/", "_")
+    local_path = cache_dir / cache_key
+    
+    # If already cached, return it
+    if local_path.exists():
+        return local_path
+    
+    # Download the file
+    fs_kwargs = {}
+    if gs:
+        fs_kwargs.update(gs)
+    
+    try:
+        with fsspec.open(path_str, **fs_kwargs) as remote_file:
+            if local_path.is_dir() or path_str.endswith("/"):
+                # Directory download
+                local_path.mkdir(parents=True, exist_ok=True)
+                # For directories, we'd need to list and download recursively
+                # For now, treat as single file
+                pass
+            else:
+                # File download
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(local_path, "wb") as local_file:
+                    local_file.write(remote_file.read())
+    except Exception as e:
+        raise FileNotFoundError(f"Failed to download {path_str}: {e}") from e
+    
+    return local_path
 
 
 class Policy(BasePolicy):
@@ -27,8 +90,8 @@ class Policy(BasePolicy):
         model: _model.BaseModel,
         *,
         rng: at.KeyArrayLike | None = None,
-        transforms: Sequence[_transforms.DataTransformFn] = (),
-        output_transforms: Sequence[_transforms.DataTransformFn] = (),
+        transforms: Sequence["_transforms.DataTransformFn"] = (),
+        output_transforms: Sequence["_transforms.DataTransformFn"] = (),
         sample_kwargs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         pytorch_device: str = "cpu",
@@ -47,6 +110,10 @@ class Policy(BasePolicy):
                           Only relevant when is_pytorch=True.
             is_pytorch: Whether the model is a PyTorch model. If False, assumes JAX model.
         """
+        # Import transforms at runtime to avoid circular import
+        if _transforms is None:
+            from openpi import transforms as _transforms
+        
         self._model = model
         self._input_transform = _transforms.compose(transforms)
         self._output_transform = _transforms.compose(output_transforms)
