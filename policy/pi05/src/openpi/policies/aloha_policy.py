@@ -94,17 +94,16 @@ class AlohaOutputs(transforms.DataTransformFn):
     # If true, this will convert the joint and gripper values from the standard Aloha space to
     # the space used by the pi internal runtime which was used to train the base model.
     adapt_to_pi: bool = True
+    
+    # Output action dimension. If None, will automatically detect from input actions.
+    # Use 14 for standard dual-arm Aloha, 16 for franka-panda.
+    action_dim: int | None = None
 
     def __call__(self, data: dict) -> dict:
         actions = np.asarray(data["actions"])
-        action_dim = actions.shape[-1]
-        # For 16-dim data, keep all dimensions; for 14-dim, keep first 14
-        if action_dim > 14:
-            # Keep all dimensions for franka-panda (16-dim)
-            pass
-        else:
-            # For standard aloha, only return the first 14 dims
-            actions = actions[:, :14]
+        assert self.action_dim is not None, "action_dim must be specified"
+        # Slice actions to the desired output dimension
+        actions = actions[:, :self.action_dim]
         return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi)}
 
 

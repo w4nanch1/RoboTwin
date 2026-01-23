@@ -235,6 +235,9 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
     # the space used by the pi internal runtime which was used to train the base model. People who
     # use standard Aloha data should set this to true.
     adapt_to_pi: bool = True
+    # Output action dimension. If None, will automatically detect from input actions.
+    # Use 14 for standard dual-arm Aloha, 16 for franka-panda.
+    action_dim: int | None = None
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -257,7 +260,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[aloha_policy.AlohaInputs(adapt_to_pi=self.adapt_to_pi)],
-            outputs=[aloha_policy.AlohaOutputs(adapt_to_pi=self.adapt_to_pi)],
+            outputs=[aloha_policy.AlohaOutputs(adapt_to_pi=self.adapt_to_pi, action_dim=self.action_dim)],
         )
         if self.use_delta_joint_actions:
             delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
@@ -557,7 +560,8 @@ _CONFIGS = [
         name="pi05_aloha_full_base",
         model=pi0_config.Pi0Config(pi05=True),
         data=LeRobotAlohaDataConfig(
-            repo_id="demo_clean_repo_aloha",
+            repo_id="demo_clean_repo",
+            action_dim=14,  # Standard dual-arm Aloha: 14 dimensions
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -585,6 +589,7 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(pi05=True),
         data=LeRobotAlohaDataConfig(
             repo_id="demo_clean_repo_fanka",
+            action_dim=16,  # Franka-panda: 16 dimensions
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -614,6 +619,7 @@ _CONFIGS = [
         data=LeRobotAlohaDataConfig(
             repo_id="your_repo_id",  # your datasets repo_id
             adapt_to_pi=False,
+            action_dim=14,  # Set to 14 for Aloha, 16 for Franka-panda
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -644,6 +650,7 @@ _CONFIGS = [
         data=LeRobotAlohaDataConfig(
             repo_id="your_repo_id",  # your datasets repo_id
             adapt_to_pi=False,
+            action_dim=14,  # Set to 14 for Aloha, 16 for Franka-panda
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -675,6 +682,7 @@ _CONFIGS = [
         data=LeRobotAlohaDataConfig(
             repo_id="your_repo_id",  # your datasets repo_id
             adapt_to_pi=False,
+            action_dim=14,  # Set to 14 for Aloha, 16 for Franka-panda
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
@@ -704,6 +712,7 @@ _CONFIGS = [
         data=LeRobotAlohaDataConfig(
             repo_id="your_repo_id",  # your datasets repo_id
             adapt_to_pi=False,
+            action_dim=14,  # Set to 14 for Aloha, 16 for Franka-panda
             repack_transforms=_transforms.Group(inputs=[
                 _transforms.RepackTransform({
                     "images": {
